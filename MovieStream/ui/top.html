@@ -1,0 +1,103 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #111;
+            color: #eee;
+            font-family: system-ui,Arial;
+            width: 100vw;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .bar {
+            width: calc(100% - 20px);
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: end;
+            gap: 10px;
+            padding-inline: 10px;
+        }
+
+        input {
+            flex: 1;
+            min-width: 240px;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            background: #181818;
+            color: #eee;
+            border: 1px solid transparent;
+            transition: border .2s ease;
+        }
+
+        input:focus{
+            outline: none;
+            border: 1px solid #333;
+        }
+
+        button {
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: 1px solid #333;
+            background: #222;
+            color: #eee;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #2b2b2b;
+        }
+
+        .msg {
+            padding-inline: 10px;
+            font-size: 12px;
+            opacity: .85;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 35vw;
+        }
+
+        .err {
+            color: #ff9a9a;
+        }
+    </style>
+</head>
+<body>
+    <div class="bar">
+        <input id="u" placeholder="Paste URL and click Load" />
+        <span id="msg" class="msg"></span>
+        <button id="load">Load</button>
+        <button id="remove">Remove</button>
+    </div>
+
+    <script>const u = document.getElementById('u');
+  const msg = document.getElementById('msg');
+  const post = (o) => window.chrome.webview.postMessage(o);
+
+  document.getElementById('load').addEventListener('click', () => {
+    msg.textContent = '';
+    msg.classList.remove('err');
+    post({ type:'load', url:(u.value||'').trim() });
+  });
+
+  document.getElementById('remove').addEventListener('click', () => {
+    msg.textContent = '';
+    msg.classList.remove('err');
+    post({ type:'remove' });
+  });
+
+  window.chrome.webview.addEventListener('message', (ev) => {
+    const m = ev.data || {};
+    if (m.type === 'error') { msg.textContent = m.message || 'Error'; msg.classList.add('err'); }
+    if (m.type === 'status') { msg.textContent = m.message || ''; msg.classList.remove('err'); }
+  });</script>
+</body>
+</html>

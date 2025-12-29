@@ -1,0 +1,117 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #111;
+            color: #eee;
+            font-family: system-ui,Arial;
+            width: 100vw;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .row {
+            width: calc(100% - 20px);
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: end;
+            gap: 10px;
+            padding-inline: 10px;
+        }
+
+        button {
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: 1px solid #333;
+            background: #222;
+            color: #eee;
+            cursor: pointer;
+        }
+
+        button#pp {
+            width: 75px;
+        }
+
+            button:hover {
+                background: #2b2b2b;
+            }
+
+        input[type=range] {
+            width: min(800px,100%);
+        }
+
+        .spacer {
+            flex: 1;
+        }
+
+        .small {
+            font-size: 12px;
+            opacity: .85;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="row">
+        <button id="pp">Play</button>
+        <input id="seek" type="range" min="0" max="1000" value="0" />
+        <span id="time" class="small">00:00 / 00:00</span>
+        <span class="spacer"></span>
+        <!--<button id="fs" disabled>Fullscreen</button>-->
+    </div>
+
+    <script>const pp = document.getElementById('pp');
+  const seek = document.getElementById('seek');
+  const time = document.getElementById('time');
+  const post = (o) => window.chrome.webview.postMessage(o);
+
+  let dragging = false;
+
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function fmt(ms){
+    ms = Math.max(0, ms|0);
+    const s = Math.floor(ms/1000);
+    const h = Math.floor(s/3600);
+    const m = Math.floor((s%3600)/60);
+    const ss = s%60;
+    return h>0 ? `${h}:${pad(m)}:${pad(ss)}` : `${m}:${pad(ss)}`;
+  }
+
+  pp.addEventListener('click', () => post({ type:'togglePlayPause' }));
+
+  seek.addEventListener('pointerdown', () => { dragging = true; post({ type:'seekStart' }); });
+  seek.addEventListener('pointerup', () => {
+    dragging = false;
+    const pos = Number(seek.value) / Number(seek.max);
+    post({ type:'seekEnd', pos });
+  });
+
+  post({ type:'requestState' });
+
+  window.chrome.webview.addEventListener('message', (ev) => {
+    const s = ev.data || {};
+    if (s.type !== 'state') return;
+
+    pp.textContent = s.isPlaying ? 'Pause' : 'Play';
+
+    const hasLen = (typeof s.lengthMs === 'number') && s.lengthMs > 0;
+    time.textContent = hasLen ? `${fmt(s.timeMs)} / ${fmt(s.lengthMs)}` : `${fmt(s.timeMs)} / --:--`;
+
+    if (!dragging && typeof s.pos === 'number' && s.pos >= 0) {
+      seek.value = Math.max(0, Math.min(seek.max, Math.round(s.pos * Number(seek.max))));
+    }
+
+    if (!s.hasMedia) {
+      seek.value = 0;
+      time.textContent = '00:00 / 00:00';
+      pp.textContent = 'Play';
+    }
+  });</script>
+</body>
+</html>
