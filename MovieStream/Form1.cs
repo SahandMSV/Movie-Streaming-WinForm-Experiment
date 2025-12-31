@@ -1,12 +1,10 @@
 using System;
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows.Forms;
 using LibVLCSharp.Shared;
-using LibVLCSharp.WinForms;
 using Microsoft.Web.WebView2.Core;
-using Microsoft.Web.WebView2.WinForms;
-using System.Runtime.InteropServices;
 
 namespace MovieStream
 {
@@ -17,25 +15,16 @@ namespace MovieStream
         private MediaPlayer _mp = null!;
         private Media? _media;
 
-        // Layout
-        private readonly TableLayoutPanel _root = new();
-        private readonly VideoView _videoView = new();
-
-        // HTML bars
-        private readonly WebView2 _topBar = new();
-        private readonly WebView2 _bottomBar = new();
-
-        // Fix Timer ambiguity by fully qualifying
-        private readonly System.Windows.Forms.Timer _uiTimer = new() { Interval = 200 };
         private bool _seekingFromUi;
+        private string? _currentUrl;
 
         protected override void OnHandleCreated(EventArgs e)
         {
-            base.OnHandleCreated(e); // required when overriding [web:347]
+            base.OnHandleCreated(e);
 
             const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
             int enabled = 1;
-            DwmSetWindowAttribute(Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref enabled, sizeof(int));
+            _ = DwmSetWindowAttribute(Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref enabled, sizeof(int));
         }
 
         [DllImport("dwmapi.dll")]
@@ -47,81 +36,69 @@ namespace MovieStream
 
         public Form1()
         {
-            Text = "MovieStream";
-            Width = 1100;
-            Height = 700;
-            StartPosition = FormStartPosition.CenterScreen;
-
-            BuildLayout();
+            InitializeComponent();
 
             Load += Form1_Load;
             FormClosing += Form1_FormClosing;
 
-            _uiTimer.Tick += (_, __) => PushPlayerStateToBottomBar();
-        }
-
-        private void BuildLayout()
-        {
-            BackColor = Color.FromArgb(17, 17, 17);
-            _root.BackColor = BackColor;
-            _root.Padding = Padding.Empty;
-            _root.Margin = Padding.Empty;
-            _root.Dock = DockStyle.Fill;
-            _root.ColumnCount = 1;
-            _root.RowCount = 3;
-            _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));  // top bar
-            _root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // video
-            _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));  // bottom bar
-            Controls.Add(_root);
-
-            _topBar.Dock = DockStyle.Fill;
-            _topBar.Margin = Padding.Empty;
-            _root.Controls.Add(_topBar, 0, 0);
-
-            _videoView.Dock = DockStyle.Fill;
-            _videoView.Margin = Padding.Empty;
-            _videoView.BackColor = Color.Black;
-            _root.Controls.Add(_videoView, 0, 1);
-
-            _bottomBar.Dock = DockStyle.Fill;
-            _bottomBar.Margin = Padding.Empty;
-            _root.Controls.Add(_bottomBar, 0, 2);
+            uiTimer.Tick += (_, __) => PushPlayerStateToUi();
         }
 
         private async void Form1_Load(object? sender, EventArgs e)
         {
-            // LibVLC init
+            uiView.BringToFront();
+
             Core.Initialize();
             _libVLC = new LibVLC();
             _mp = new MediaPlayer(_libVLC);
-            _videoView.MediaPlayer = _mp;
+            videoView.MediaPlayer = _mp;
 
-            // WebView2 init (async) [web:299]
-            await _topBar.EnsureCoreWebView2Async();
-            await _bottomBar.EnsureCoreWebView2Async();
+            // Push state on relevant player events
+            _mp.Playing += (_, __) => SafeUiPush();
+            _mp.Paused += (_, __) => SafeUiPush();
+            _mp.Stopped += (_, __) => SafeUiPush();
+            _mp.EndReached += (_, __) => SafeUiPush();
+            _mp.TimeChanged += (_, __) => { if (!_seekingFromUi) SafeUiPush(); };
 
-            // One origin for local files (recommended for local content) [web:86]
+            await uiView.EnsureCoreWebView2Async();
+            uiView.DefaultBackgroundColor = Color.Transparent;
+
             var baseDir = AppContext.BaseDirectory;
-            _topBar.CoreWebView2.SetVirtualHostNameToFolderMapping("app", baseDir, CoreWebView2HostResourceAccessKind.DenyCors);
-            _bottomBar.CoreWebView2.SetVirtualHostNameToFolderMapping("app", baseDir, CoreWebView2HostResourceAccessKind.DenyCors);
+            uiView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                "app",
+                baseDir,
+                CoreWebView2HostResourceAccessKind.DenyCors);
 
-            // Load UI
-            _topBar.Source = new Uri("https://app/ui/top.html");
-            _bottomBar.Source = new Uri("https://app/ui/bottom.html");
+            uiView.CoreWebView2.WebMessageReceived += Ui_WebMessageReceived;
+            uiView.Source = new Uri("https://app/ui/playerui.html");
 
-            // Hook messages
-            _topBar.CoreWebView2.WebMessageReceived += TopBar_WebMessageReceived;
-            _bottomBar.CoreWebView2.WebMessageReceived += BottomBar_WebMessageReceived;
-
-            _uiTimer.Start();
+            uiTimer.Start();
         }
 
-        private void TopBar_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+        private void SafeUiPush()
+        {
+            try
+            {
+                if (!IsHandleCreated) return;
+                if (InvokeRequired)
+                {
+                    BeginInvoke((Action)(() => PushPlayerStateToUi()));
+                }
+                else
+                {
+                    PushPlayerStateToUi();
+                }
+            }
+            catch { }
+        }
+
+        private void Ui_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
             try
             {
                 using var doc = JsonDocument.Parse(e.WebMessageAsJson);
                 var root = doc.RootElement;
+
                 var type = root.TryGetProperty("type", out var t) ? t.GetString() : null;
                 if (string.IsNullOrWhiteSpace(type)) return;
 
@@ -132,9 +109,10 @@ namespace MovieStream
                             var url = root.TryGetProperty("url", out var u) ? (u.GetString() ?? "").Trim() : "";
                             if (!Uri.TryCreate(url, UriKind.Absolute, out _))
                             {
-                                PostToTop(new { type = "error", message = "Invalid URL." });
+                                PostToUi(new { type = "error", message = "Invalid URL." });
                                 return;
                             }
+
                             PlayUrl(url);
                             break;
                         }
@@ -142,29 +120,13 @@ namespace MovieStream
                     case "remove":
                         StopAndClear();
                         break;
-                }
-            }
-            catch
-            {
-                PostToTop(new { type = "error", message = "Bad message from UI." });
-            }
-        }
 
-        private void BottomBar_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
-        {
-            try
-            {
-                using var doc = JsonDocument.Parse(e.WebMessageAsJson);
-                var root = doc.RootElement;
-                var type = root.TryGetProperty("type", out var t) ? t.GetString() : null;
-                if (string.IsNullOrWhiteSpace(type)) return;
+                    case "play":
+                        PlayOrResume();
+                        break;
 
-                switch (type)
-                {
-                    case "togglePlayPause":
-                        if (_mp.IsPlaying) _mp.Pause();
-                        else _mp.Play();
-                        PushPlayerStateToBottomBar();
+                    case "pause":
+                        Pause();
                         break;
 
                     case "seekStart":
@@ -183,28 +145,63 @@ namespace MovieStream
                             if (len > 0) _mp.Time = (long)(pos * len);
                             else _mp.Position = pos;
 
-                            PushPlayerStateToBottomBar();
+                            PushPlayerStateToUi();
                             break;
                         }
 
                     case "requestState":
-                        PushPlayerStateToBottomBar();
+                        PushPlayerStateToUi();
                         break;
                 }
             }
+            catch
+            {
+                PostToUi(new { type = "error", message = "Bad message from UI." });
+            }
+        }
+
+        private void PlayOrResume()
+        {
+            if (_media == null)
+            {
+                PostToUi(new { type = "status", message = "No media loaded." });
+                return;
+            }
+
+            try
+            {
+                _mp.SetPause(false);
+                _mp.Play();
+            }
             catch { }
+
+            PushPlayerStateToUi();
+        }
+
+        private void Pause()
+        {
+            if (_media == null) return;
+
+            try { _mp.SetPause(true); } catch { }
+            PushPlayerStateToUi();
         }
 
         private void PlayUrl(string url)
         {
+            _currentUrl = url;
+
             try { _mp.Stop(); } catch { }
 
             _media?.Dispose();
             _media = new Media(_libVLC, url, FromType.FromLocation);
+
+            // Let VLC render embedded/external subtitles normally (no WebView subtitle overlay)
+            // Do NOT set :no-spu here.
+
             _mp.Play(_media);
 
-            PostToTop(new { type = "status", message = "Loading..." });
-            PushPlayerStateToBottomBar();
+            PostToUi(new { type = "status", message = "Loading..." });
+            PushPlayerStateToUi();
         }
 
         private void StopAndClear()
@@ -213,18 +210,27 @@ namespace MovieStream
 
             _media?.Dispose();
             _media = null;
+            _currentUrl = null;
 
-            PostToTop(new { type = "status", message = "" });
-            PushPlayerStateToBottomBar(reset: true);
+            PostToUi(new { type = "status", message = "" });
+            PushPlayerStateToUi(reset: true);
         }
 
-        private void PushPlayerStateToBottomBar(bool reset = false)
+        private void PushPlayerStateToUi(bool reset = false)
         {
-            if (_bottomBar.CoreWebView2 == null) return;
+            if (uiView.CoreWebView2 == null) return;
 
             if (reset)
             {
-                PostToBottom(new { type = "state", hasMedia = false, isPlaying = false, timeMs = 0L, lengthMs = 0L, pos = 0.0 });
+                PostToUi(new
+                {
+                    type = "state",
+                    hasMedia = false,
+                    isPlaying = false,
+                    timeMs = 0L,
+                    lengthMs = 0L,
+                    pos = 0.0
+                });
                 return;
             }
 
@@ -232,24 +238,49 @@ namespace MovieStream
             var len = Math.Max(0, _mp.Length);
             var pos = (len > 0) ? (double)time / len : Math.Clamp(_mp.Position, 0f, 1f);
 
-            if (_seekingFromUi) pos = -1; // don’t overwrite slider while dragging
+            if (_seekingFromUi) pos = -1;
 
-            PostToBottom(new { type = "state", hasMedia = _media != null, isPlaying = _mp.IsPlaying, timeMs = time, lengthMs = len, pos });
+            var state = _mp.State;
+            var isPlaying = state == VLCState.Playing || state == VLCState.Buffering || state == VLCState.Opening;
+
+            PostToUi(new
+            {
+                type = "state",
+                hasMedia = _media != null,
+                isPlaying,
+                timeMs = time,
+                lengthMs = len,
+                pos
+            });
         }
 
-        private void PostToTop(object obj)
+        private void PostToUi(object obj)
         {
-            try { _topBar.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(obj)); } catch { }
-        }
+            try
+            {
+                if (uiView.CoreWebView2 == null) return;
 
-        private void PostToBottom(object obj)
-        {
-            try { _bottomBar.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(obj)); } catch { }
+                var json = JsonSerializer.Serialize(obj);
+
+                if (InvokeRequired)
+                {
+                    BeginInvoke((Action)(() =>
+                    {
+                        try { uiView.CoreWebView2?.PostWebMessageAsJson(json); } catch { }
+                    }));
+                }
+                else
+                {
+                    uiView.CoreWebView2.PostWebMessageAsJson(json);
+                }
+            }
+            catch { }
         }
 
         private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
         {
-            _uiTimer.Stop();
+            uiTimer.Stop();
+
             try { _mp?.Stop(); } catch { }
             try { _media?.Dispose(); } catch { }
             try { _mp?.Dispose(); } catch { }

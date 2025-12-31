@@ -9,15 +9,18 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="ui\bottom.html" />
-    <None Remove="ui\top.html" />
+    <None Remove="ui\playerui.css" />
+    <None Remove="ui\playerui.js" />
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="ui\bottom.html">
+    <Content Include="ui\playerui.css">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <Content Include="ui\top.html">
+    <Content Include="ui\playerui.html">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="ui\playerui.js">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

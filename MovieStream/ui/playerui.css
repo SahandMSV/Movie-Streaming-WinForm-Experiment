@@ -1,0 +1,132 @@
+html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: transparent;
+    font-family: system-ui, Arial;
+    color: #eee;
+}
+
+/* Overlay container */
+.overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    pointer-events: none;
+}
+
+/* Bars */
+.bar {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    background: rgba(17, 17, 17, 0.85);
+    backdrop-filter: blur(6px);
+    will-change: opacity, transform;
+    transition: opacity 200ms ease, transform 200ms ease;
+    opacity: 1;
+}
+
+    .bar.hidden {
+        opacity: 0;
+        pointer-events: none;
+    }
+
+#topBar.hidden {
+    transform: translateY(-14px);
+}
+
+#bottomBar.hidden {
+    transform: translateY(14px);
+}
+
+/* Inputs / buttons */
+input[type="text"] {
+    flex: 1 1 auto;
+    min-width: 240px;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: #181818;
+    color: #eee;
+    transition: border .2s ease;
+}
+
+    input[type="text"]:focus {
+        outline: none;
+        border-color: #333;
+    }
+
+button {
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid #333;
+    background: #222;
+    color: #eee;
+    cursor: pointer;
+    user-select: none;
+    font-family: inherit;
+}
+
+    button:hover {
+        background: #2b2b2b;
+    }
+
+.msg {
+    font-size: 12px;
+    opacity: .85;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 35vw;
+}
+
+    .msg.err {
+        color: #ff9a9a;
+    }
+
+.small {
+    font-size: 12px;
+    opacity: .85;
+    white-space: nowrap;
+}
+
+#bottomBar {
+    gap: 12px;
+}
+
+.bb-left, .bb-right {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+}
+
+.bb-left {
+    width: fit-content;
+}
+
+.bb-right {
+    width: fit-content;
+    justify-content: flex-end;
+}
+
+.bb-mid {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+}
+
+#pp {
+    width: 65px;
+}
+
+#seek {
+    width: 100%;
+    min-width: 0;
+}

@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <link rel="stylesheet" href="playerui.css" />
+</head>
+
+<body>
+    <div class="overlay" id="overlayRoot">
+        <div class="bar" id="topBar">
+            <input id="u" type="text" placeholder="Paste URL and click Load" />
+            <span id="msg" class="msg"></span>
+            <button id="load">Load</button>
+            <button id="remove">Remove</button>
+        </div>
+
+        <div class="bar" id="bottomBar">
+            <div class="bb-left">
+                <button id="pp">Play</button>
+            </div>
+
+            <div class="bb-mid">
+                <input id="seek" type="range" min="0" max="1000" value="0" />
+            </div>
+
+            <div class="bb-right">
+                <span id="time" class="small">00:00 / 00:00</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="playerui.js"></script>
+</body>
+</html>
